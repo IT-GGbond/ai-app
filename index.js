@@ -10,13 +10,17 @@ const openai = new OpenAI({
     baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
 });
 
+// 同步读取上下文
+const fs = require('fs')
+const innerPrompt = fs.readFileSync('./doc/prompt.md').toString();
+
 // 缓存上下文
 // 不足：1. 没有存到远程数据库，服务停止就清空
 //      2. 要加上用户信息和身份验证
 let messageList = [
     {
         role: 'system',
-        content: '你是一名资深的前端程序员，你所在的公司主要使用react开发',
+        content: innerPrompt,
     },
 ]
 
@@ -32,7 +36,7 @@ app.get('/llm', async (req, res) => {
         content: req.query.content,
     })
     const llmRes = await openai.chat.completions.create({
-        model: 'qwen-flash',
+        model: 'qwen-plus',
         messages: messageList,
     });
     // 缓存对话历史
