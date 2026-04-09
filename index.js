@@ -10,20 +10,35 @@ const openai = new OpenAI({
     baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
 });
 
+// 缓存上下文
+// 不足：1. 没有存到远程数据库，服务停止就清空
+//      2. 要加上用户信息和身份验证
+let messageList = [
+    {
+        role: 'system',
+        content: '你是一名资深的前端程序员，你所在的公司主要使用react开发',
+    },
+]
+
 // 接口定义
 app.get('/llm', async (req, res) => {
     // req具体参考：https://expressjs.com/zh-cn/5x/api.html#req，
     // req对象是Node自己的请求对象的增强版本，支持所有内置字段和方法。
     console.log(req.query.content);
+
+    // 缓存对话历史
+    messageList.push({
+        role: 'user',
+        content: req.query.content,
+    })
     const llmRes = await openai.chat.completions.create({
         model: 'qwen-flash',
-        messages: [
-            {
-                role: 'user',
-                content: req.query.content,
-            }
-        ],
+        messages: messageList,
     });
+    // 缓存对话历史
+    if(llmRes) {
+        messageList.push(llmRes.choices[0].message);
+    }
     
     res.json({code: 200, data: llmRes.choices[0].message, mes: '成功'});
 });
