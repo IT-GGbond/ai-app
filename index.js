@@ -3,6 +3,10 @@ const app = express();
 const port = 8080;
 const config = require('./config');
 
+// 解决跨域
+const cors = require('cors')
+app.use(cors())
+
 // 使用sdk
 const OpenAI = require('openai');
 const openai = new OpenAI({

@@ -1,5 +1,6 @@
 ## 服务器启动
-- 接口导入cors app.use(cors) ？？
+- 接口导入cors app.use(cors()) , 解决跨域问题
+- app.use(cors(corsOptions)); 允许自定义跨域规则
 
 ## 大模型接口sdk
 - 如何抓包这个接口？
