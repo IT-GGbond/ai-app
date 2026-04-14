@@ -2,6 +2,7 @@ const express = require('express')
 const app = express();
 const port = 8080;
 const config = require('./config');
+const { compressMessage } = require('./utils');
 
 // 解决跨域
 const cors = require('cors')
@@ -27,6 +28,8 @@ let messageList = [
         content: innerPrompt,
     },
 ]
+// 最大上下文容量
+const maxCount = 10;
 
 // 接口定义
 app.get('/llm', async (req, res) => {
@@ -34,6 +37,13 @@ app.get('/llm', async (req, res) => {
     // req对象是Node自己的请求对象的增强版本，支持所有内置字段和方法。
     console.log(req.query.content);
 
+    // 压缩上下文
+    if (messageList.length > maxCount) {
+        const compressList = messageList.splice(1, Math.floor(maxCount/2));
+        const compressRes = await compressMessage(openai, compressList);
+        messageList.splice(1, 0, compressRes);
+    }
+    
     // 缓存对话历史
     messageList.push({
         role: 'user',
