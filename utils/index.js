@@ -17,6 +17,24 @@ async function compressMessage(openai, compressList) {
     return llmRes.choices[0].message;
 }
 
+// 生成标题
+async function generateTitle(openai, content) {
+    const llmRes = await openai.chat.completions.create({
+        model: 'qwen-flsh',
+        messages: [
+            {
+                role: 'system',
+                content: '总结下面的文字，生成一个20个字以内的精简标题',
+            },
+            {
+                role: 'user',
+                content,
+            }
+        ],
+    });
+    return llmRes.choices[0].message.content;
+}
+
 // 读取文件数据
 function readSessionObj() {
     const jsonStr = fs.readFileSync(sessionDB).toString();
@@ -31,6 +49,7 @@ function writeSessionObj(obj) {
 
 module.exports = {
     compressMessage,
+    generateTitle,
     readSessionObj,
-    writeSessionObj
+    writeSessionObj,
 };

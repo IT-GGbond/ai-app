@@ -4,7 +4,7 @@
     "userId":{
         "sessionId1": {
             "title": '',
-            "sessionList": [
+            "messageList": [
                 {
                     "role": '',
                     "content": '',

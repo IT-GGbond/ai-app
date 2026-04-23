@@ -2,7 +2,7 @@ const express = require('express')
 const app = express();
 const port = 8080;
 const config = require('./config');
-const { compressMessage, readSessionObj, writeSessionObj } = require('./utils');
+const { compressMessage, readSessionObj, writeSessionObj, generateTitle } = require('./utils');
 
 // 解决跨域
 const cors = require('cors')
@@ -55,7 +55,7 @@ app.get('/llm', async (req, res) => {
         content: req.query.content,
     })
     const llmRes = await openai.chat.completions.create({
-        model: 'qwen-flash',
+        model: 'qwen-plus',
         messages: messageList,
     });
     // 缓存对话历史
@@ -67,27 +67,59 @@ app.get('/llm', async (req, res) => {
 });
 
 // 业务接口重定义--数据存在sessionList.json
-// 1. 获取大模型的聊天接口 / llm | 改为post，可以传token进行身份校验，userid，sessionid，流式传输SSE！！！
-// 2. 创建新对话 / session / create | 传userid，返回新的sessionid
+// 1. 获取大模型的聊天接口 / llmNew | 改为post，可以传token进行身份校验，userid，sessionid，流式传输SSE(后续再改进，补充llmSSE)！！！
+// 2. 创建新对话 / session / create | 传userid，返回新的sessionid --不需要了
 // 3. 获取当前会话记录 / session / detail | 传sessionid，返回当前聊天记录
 // 4. 获取当前用户会话列表 / session / list | 传userid, 返回用户的sessionid和title列表
 // 5. 为当前会话创建标题 / session / title | 传sessionid, 返回标题
-app.post('/llmSSE', async (req, res) => {
+app.post('/llmNew', async (req, res) => {
     // 1. 读取content字段
-    let content = req.body.content || '';
+    let { content, sessionId, userId } = req.body;
     // 2. 获取当前id的会话记录
-
+    let sessionList = readSessionObj()
+    if (!sessionId) {
+        // 创建新对话
+        // 生成标题
+        const title = content.length > 20 ? generateTitle(openai, content) : content;
+        sessionId = userId + Date.now();
+        sessionList[userId][sessionId] = {
+            title: title,
+            messageList: [
+                {
+                    role: 'system',
+                    content: innerPrompt,
+                }
+            ]
+        }
+    }
     // 3. 压缩上下文
+    let messageList = sessionList[userId][sessionId].messageList;
+    if (messageList.length > maxCount) {
+        const compressList = messageList.splice(1, Math.floor(maxCount / 2));
+        const compressRes = await compressMessage(openai, compressList);
+        messageList.splice(1, 0, compressRes);
+    }
+    // 4. 添加用户对话
+    messageList.push({
+        role: 'user',
+        content: content,
+    })
 
     // 4. 调用大模型
     const llmRes = await openai.chat.completions.create({
         model: 'qwen-flash',
         messages: messageList,
-        stream: true, // 流式传输
+        // stream: true, // 流式传输
     });
     // 5. 拼接输出到数据库
+    messageList.push(llmRes.choices[0].message);
 
-    // 6. 修改响应头，流式返回
+    // 6. 修改响应头，流式返回(待完善)
+    // 过滤内置system再返回
+    res.json({ code: 200, data: messageList.filter(item => item.role !== 'system'), message: '' });
+
+    // 7. 写入db
+    writeSessionObj(sessionList);
 })
 
 app.get('/session/create', (req, res) => {
@@ -100,7 +132,7 @@ app.get('/session/create', (req, res) => {
     // console.log(sessionList[userId])
     sessionList[userId][sessionId] = {
         title: '',
-        sessionList: []
+        messageList: []
     }
 
     // 2. 写入db
@@ -111,13 +143,14 @@ app.get('/session/create', (req, res) => {
 })
 
 app.get('/session/detail', (req, res) => {
+    console.log('获取详情');
     // 1. 根据userid和sessionId查找
     const { userId, sessionId } = req.query;
     const sessionList = readSessionObj();
-    const detail = sessionList[userId][sessionId];
+    const detail = sessionList[userId][sessionId].messageList;
     // 2. 返回当前对话详情
     if (detail) {
-        res.json({ code: 200, data: detail, message: '' });
+        res.json({ code: 200, data: detail.filter(item => item.role !== 'system'), message: '' });
     } else {
         res.json({ code: 20002, data: '', message: '该对话不存在' });
     }
@@ -132,7 +165,7 @@ app.get('/session/list', (req, res) => {
 
     // 2. 只需要返回对应的title和id即可
     const result = Object.keys(mylist).map(sessionId => ({
-        id: sessionId,
+        sessionId,
         title: mylist[sessionId].title,
     }))
 
