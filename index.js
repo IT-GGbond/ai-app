@@ -80,7 +80,7 @@ app.post('/llmNew', async (req, res) => {
     if (!sessionId) {
         // 创建新对话
         // 生成标题
-        const title = content.length > 20 ? generateTitle(openai, content) : content;
+        const title = content.length > 20 ? await generateTitle(openai, content) : content;
         sessionId = userId + Date.now();
         sessionList[userId][sessionId] = {
             title: title,

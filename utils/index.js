@@ -5,7 +5,7 @@ const sessionDB = './db/sessionList.json'
 // 压缩上下文
 async function compressMessage(openai, compressList) {
     const llmRes = await openai.chat.completions.create({
-        model: 'qwen-flsh',
+        model: 'qwen-flash',
         messages: [
             {
                 role: 'system',
@@ -20,7 +20,7 @@ async function compressMessage(openai, compressList) {
 // 生成标题
 async function generateTitle(openai, content) {
     const llmRes = await openai.chat.completions.create({
-        model: 'qwen-flsh',
+        model: 'qwen-flash',
         messages: [
             {
                 role: 'system',
