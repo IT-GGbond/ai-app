@@ -55,9 +55,11 @@ app.get('/llm', async (req, res) => {
         content: req.query.content,
     })
     const llmRes = await openai.chat.completions.create({
-        model: 'qwen-plus',
+        model: 'qwen-flash',
         messages: messageList,
+        stream: true,
     });
+    console.log(llmRes);
     // 缓存对话历史
     if (llmRes) {
         messageList.push(llmRes.choices[0].message);
@@ -122,6 +124,86 @@ app.post('/llmNew', async (req, res) => {
     writeSessionObj(sessionList);
 })
 
+// 大模型流式传输,get请求，前端通过eventSource 这个web api来接收
+app.get('/llmSSE', async (req, res) => {
+    let { content, userId, sessionId } = req.query;
+    console.log(req.query);
+    let sessionList = readSessionObj()
+    if (!sessionId) {
+        // 创建新对话
+        // 生成标题
+        const title = content.length > 20 ? await generateTitle(openai, content) : content;
+        sessionId = userId + Date.now();
+        sessionList[userId][sessionId] = {
+            title: title,
+            messageList: [
+                {
+                    role: 'system',
+                    content: innerPrompt,
+                }
+            ]
+        }
+    }
+    // 3. 压缩上下文
+    let messageList = sessionList[userId][sessionId].messageList;
+    if (messageList.length > maxCount) {
+        const compressList = messageList.splice(1, Math.floor(maxCount / 2));
+        const compressRes = await compressMessage(openai, compressList);
+        messageList.splice(1, 0, compressRes);
+    }
+    // 4. 添加用户对话
+    messageList.push({
+        role: 'user',
+        content: content,
+    })
+
+    // 5. 调用大模型
+    const llmRes = await openai.chat.completions.create({
+        model: 'qwen-flash',
+        messages: messageList,
+        stream: true, // 流式传输
+    });
+
+    // 6. 修改响应头，流式返回
+    res.writeHead(200, {
+        'content-type': 'text/event-stream; chartset=utf-8',
+        'connection': 'keep-alive',
+        'cache-control': 'no-cache',
+    })
+
+    // 7. 拼接输出到对象，流式传输
+    // 使用res.write和res.end
+    // 改为流式传输之后的返回的对象是异步可迭代对象，并且每个对象的字段变了，message变成delta
+    // console.log(llmRes); 
+    // Stream {   
+    //  iterator: [AsyncGeneratorFunction: iterator],
+    //  controller: AbortController { signal: AbortSignal { aborted: false } }
+    // }
+    // 流式传输出来的内容是异步可迭代对象，用for await of遍历
+    let assistantMessage = {
+        role: 'assistant',
+        id: '',
+        content: '',
+    }
+    for await (let chunk of llmRes) {
+        console.log(chunk.choices[0].delta);
+        assistantMessage.id = chunk.id; // 是否需要id
+        assistantMessage.content += chunk.choices[0].delta.content;
+        // 流式传输
+        // 直接返回拼接后的，后端维护独一份
+        res.write(JSON.stringify({ code: 200, data: assistantMessage, message: 'ok'}));
+    }
+    // 流式传输结束
+    res.end();
+    
+    // 添加拼接后的数据
+    messageList.push(assistantMessage);
+
+    // 8. 写入db
+    writeSessionObj(sessionList);
+})
+
+// 接口已弃用
 app.get('/session/create', (req, res) => {
     // 1. 根据传来的userid创建sessionid, userid+时间戳
     const { userId } = req.query;
