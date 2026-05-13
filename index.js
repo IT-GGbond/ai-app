@@ -118,6 +118,7 @@ app.post('/llmNew', async (req, res) => {
 
     // 6. 修改响应头，流式返回(待完善)
     // 过滤内置system再返回
+    // 返回所有的聊天记录而不是一条？？
     res.json({ code: 200, data: messageList.filter(item => item.role !== 'system'), message: '' });
 
     // 7. 写入db
@@ -125,9 +126,9 @@ app.post('/llmNew', async (req, res) => {
 })
 
 // 大模型流式传输,get请求，前端通过eventSource 这个web api来接收
-app.get('/llmSSE', async (req, res) => {
-    let { content, userId, sessionId } = req.query;
-    console.log(req.query);
+app.post('/llmSSE', async (req, res) => {
+    let { content, userId, sessionId } = req.body;
+    console.log(req.body);
     let sessionList = readSessionObj()
     if (!sessionId) {
         // 创建新对话
@@ -159,16 +160,16 @@ app.get('/llmSSE', async (req, res) => {
 
     // 5. 调用大模型
     const llmRes = await openai.chat.completions.create({
-        model: 'qwen-flash',
+        model: 'qwen3.6-flash',
         messages: messageList,
         stream: true, // 流式传输
     });
 
     // 6. 修改响应头，流式返回
     res.writeHead(200, {
-        'content-type': 'text/event-stream; chartset=utf-8',
-        'connection': 'keep-alive',
-        'cache-control': 'no-cache',
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Connection': 'keep-alive',
+        'Cache-Control': 'no-cache',
     })
 
     // 7. 拼接输出到对象，流式传输
@@ -186,16 +187,20 @@ app.get('/llmSSE', async (req, res) => {
         content: '',
     }
     for await (let chunk of llmRes) {
-        console.log(chunk.choices[0].delta);
+        // console.log(chunk.choices[0].delta);
         assistantMessage.id = chunk.id; // 是否需要id
-        assistantMessage.content += chunk.choices[0].delta.content;
-        // 流式传输
+        // 只在存在内容时才拼接
+        if (chunk.choices[0].delta.content) {
+            assistantMessage.content += chunk.choices[0].delta.content;
+        }
         // 直接返回拼接后的，后端维护独一份
-        res.write(JSON.stringify({ code: 200, data: assistantMessage, message: 'ok'}));
+        // 流式传输，必须遵循 SSE 的固定格式: "data: xxx \n\n"
+        res.write(`data: ${JSON.stringify(assistantMessage)}\n\n`);
     }
-    // 流式传输结束
+    // 流式传输结束：向前端发送特定结束标志
+    res.write('data: [DONE]\n\n');
     res.end();
-    
+
     // 添加拼接后的数据
     messageList.push(assistantMessage);
 
