@@ -189,13 +189,13 @@ app.post('/llmSSE', async (req, res) => {
     for await (let chunk of llmRes) {
         // console.log(chunk.choices[0].delta);
         assistantMessage.id = chunk.id; // 是否需要id
-        // 只在存在内容时才拼接
+        // 只在存在内容时才拼接和返回
         if (chunk.choices[0].delta.content) {
             assistantMessage.content += chunk.choices[0].delta.content;
+            // 直接返回拼接后的，后端维护独一份
+            // 流式传输，必须遵循 SSE 的固定格式: "data: xxx \n\n"
+            res.write(`data: ${JSON.stringify(assistantMessage)}\n\n`);
         }
-        // 直接返回拼接后的，后端维护独一份
-        // 流式传输，必须遵循 SSE 的固定格式: "data: xxx \n\n"
-        res.write(`data: ${JSON.stringify(assistantMessage)}\n\n`);
     }
     // 流式传输结束：向前端发送特定结束标志
     res.write('data: [DONE]\n\n');
